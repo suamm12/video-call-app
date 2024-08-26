@@ -27,9 +27,7 @@ io.on('connection', (socket) => {
 
     // メッセージのブロードキャスト
     socket.on('chatMessage', (message) => {
-        if (connectedUsers[socket.id]) {
-            io.to(connectedUsers[socket.id].room).emit('chatMessage', message);
-        }
+        io.emit('chatMessage', message);
     });
 
     // ビデオ通話のシグナリングメッセージを中継
@@ -55,28 +53,16 @@ io.on('connection', (socket) => {
     // 検索ワードに基づいてビデオ通話を開始するためのリクエスト
     socket.on('startVideoCall', (keyword) => {
         const targetUserIds = Object.keys(userKeywords).filter(id => userKeywords[id] === keyword);
-        if (targetUserIds.length > 0) {
-            socket.emit('searchResult', targetUserIds);
-        } else {
-            socket.emit('searchResult', []);
-        }
-    });
-
-    // ユーザーのチャットルーム設定
-    socket.on('joinRoom', (room) => {
-        socket.join(room);
-        console.log(`User ${socket.id} joined room ${room}`);
-    });
-
-    socket.on('leaveRoom', (room) => {
-        socket.leave(room);
-        console.log(`User ${socket.id} left room ${room}`);
+        targetUserIds.forEach(id => {
+            if (connectedUsers[id]) {
+                connectedUsers[id].emit('startVideoCall', socket.id);
+            }
+        });
     });
 
     socket.on('acceptVideoCall', (callerId) => {
         if (connectedUsers[callerId]) {
             connectedUsers[callerId].emit('callAccepted', socket.id);
-            socket.emit('callAccepted', callerId);
         }
     });
 });

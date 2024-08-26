@@ -1,52 +1,65 @@
-let localStream;
-let micEnabled = false;
-let cameraEnabled = false;
-const localVideo = document.getElementById('localVideo');
-const toggleMicButton = document.getElementById('toggleMic');
-const toggleCameraButton = document.getElementById('toggleCamera');
+const socket = io();
 
-// 初期設定で外向きカメラ、マイクをオフにしてセットアップ
-navigator.mediaDevices.getUserMedia({ audio: true, video: { facingMode: "environment" } })
+let localStream;
+let peerConnection;
+const config = {
+    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+};
+
+const localVideo = document.getElementById('localVideo');
+const remoteVideo = document.getElementById('remoteVideo');
+const startCallButton = document.getElementById('startCall');
+
+navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     .then(stream => {
         localStream = stream;
         localVideo.srcObject = localStream;
-        localVideo.play();
-        micEnabled = false; // 初期状態でマイクをオフ
-        cameraEnabled = true; // 外向きカメラがデフォルト
-        toggleMicButton.textContent = 'マイクオン'; // ボタンのテキストを設定
     })
     .catch(error => console.error('Error accessing media devices.', error));
 
-// マイクのオン・オフを切り替える関数
-toggleMicButton.addEventListener('click', () => {
-    micEnabled = !micEnabled;
-    localStream.getAudioTracks().forEach(track => track.enabled = micEnabled);
-    toggleMicButton.textContent = micEnabled ? 'マイクオフ' : 'マイクオン';
+startCallButton.addEventListener('click', startCall);
+
+socket.on('offer', (offer) => {
+    peerConnection = new RTCPeerConnection(config);
+    peerConnection.ontrack = (event) => {
+        remoteVideo.srcObject = event.streams[0];
+    };
+    peerConnection.addStream(localStream);
+    peerConnection.setRemoteDescription(new RTCSessionDescription(offer))
+        .then(() => peerConnection.createAnswer())
+        .then(answer => peerConnection.setLocalDescription(answer))
+        .then(() => socket.emit('answer', peerConnection.localDescription))
+        .catch(error => console.error('Error during offer handling.', error));
+
+    peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+            socket.emit('candidate', event.candidate);
+        }
+    };
 });
 
-// カメラの切り替え（外向き・内向き）を切り替える関数
-toggleCameraButton.addEventListener('click', () => {
-    if (cameraEnabled) {
-        // 外向きカメラから内向きカメラに切り替え
-        localStream.getVideoTracks().forEach(track => track.stop());
-        navigator.mediaDevices.getUserMedia({ audio: micEnabled, video: { facingMode: "user" } })
-            .then(stream => {
-                localStream = stream;
-                localVideo.srcObject = localStream;
-                localVideo.play();
-                cameraEnabled = false;
-            })
-            .catch(error => console.error('Error accessing media devices.', error));
-    } else {
-        // 内向きカメラから外向きカメラに切り替え
-        localStream.getVideoTracks().forEach(track => track.stop());
-        navigator.mediaDevices.getUserMedia({ audio: micEnabled, video: { facingMode: "environment" } })
-            .then(stream => {
-                localStream = stream;
-                localVideo.srcObject = localStream;
-                localVideo.play();
-                cameraEnabled = true;
-            })
-            .catch(error => console.error('Error accessing media devices.', error));
-    }
+socket.on('answer', (answer) => {
+    peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
 });
+
+socket.on('candidate', (candidate) => {
+    peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+});
+
+function startCall() {
+    peerConnection = new RTCPeerConnection(config);
+    peerConnection.ontrack = (event) => {
+        remoteVideo.srcObject = event.streams[0];
+    };
+    peerConnection.addStream(localStream);
+    peerConnection.createOffer()
+        .then(offer => peerConnection.setLocalDescription(offer))
+        .then(() => socket.emit('offer', peerConnection.localDescription))
+        .catch(error => console.error('Error during offer creation.', error));
+
+    peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+            socket.emit('candidate', event.candidate);
+        }
+    };
+}
