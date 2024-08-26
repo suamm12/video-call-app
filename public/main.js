@@ -8,12 +8,14 @@ const sendMessageButton = document.getElementById('sendMessage');
 const chatBox = document.getElementById('chatBox');
 const keywordInput = document.getElementById('keywordInput');
 const searchUsersButton = document.getElementById('searchUsers');
+const searchStatus = document.getElementById('searchStatus'); // ローディング表示用
 
 let localStream;
 let peerConnection;
 let micEnabled = true;
 let cameraEnabled = true;
 let otherUserId = null;
+let chatRoom = null;
 
 // WebRTCの設定
 const config = {
@@ -79,7 +81,29 @@ function setupPeerConnection() {
 
     socket.on('callAccepted', (calleeId) => {
         otherUserId = calleeId;
+        chatRoom = `${socket.id}-${otherUserId}`;
+        socket.emit('joinRoom', chatRoom);
         makeCall();
+    });
+
+    // チャットメッセージの受信
+    socket.on('chatMessage', (message) => {
+        const messageElement = document.createElement('div');
+        messageElement.textContent = message;
+        chatBox.appendChild(messageElement);
+        chatBox.scrollTop = chatBox.scrollHeight;  // スクロールを最新メッセージに合わせる
+    });
+
+    // 検索結果を受信
+    socket.on('searchResult', (userIds) => {
+        searchStatus.textContent = '';
+        if (userIds.length > 0) {
+            alert(`Users found: ${userIds.join(', ')}`);
+            otherUserId = userIds[0];
+            chatRoom = `${socket.id}-${otherUserId}`;
+        } else {
+            alert('No users found');
+        }
     });
 }
 
@@ -119,7 +143,6 @@ toggleCameraButton.addEventListener('click', async () => {
             }
         });
 
-        localVideo.srcObject = localStream;
         localVideo.play();
     } catch (error) {
         console.error('Error accessing media devices.', error);
@@ -129,24 +152,22 @@ toggleCameraButton.addEventListener('click', async () => {
 // チャット機能
 sendMessageButton.addEventListener('click', () => {
     const message = messageInput.value;
-    if (message) {
+    if (message && chatRoom) {
         socket.emit('chatMessage', message);
         messageInput.value = '';
+    } else {
+        alert('You need to be in a chat room to send messages.');
     }
-});
-
-// チャットメッセージの受信
-socket.on('chatMessage', (message) => {
-    const messageElement = document.createElement('div');
-    messageElement.textContent = message;
-    chatBox.appendChild(messageElement);
-    chatBox.scrollTop = chatBox.scrollHeight;  // スクロールを最新メッセージに合わせる
 });
 
 // ユーザー検索機能
 searchUsersButton.addEventListener('click', () => {
     const keyword = keywordInput.value;
     if (keyword) {
+        searchStatus.textContent = 'Searching...'; // ローディング表示
         socket.emit('startVideoCall', keyword);
     }
 });
+
+// ページのロード時にメディアを開始
+window.onload = startMedia;
