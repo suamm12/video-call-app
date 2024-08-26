@@ -7,8 +7,7 @@ const toggleCameraButton = document.getElementById('toggleCamera');
 const messageInput = document.getElementById('messageInput');
 const sendMessageButton = document.getElementById('sendMessage');
 const chatBox = document.getElementById('chatBox');
-const keywordInput = document.getElementById('keywordInput');
-const searchUsersButton = document.getElementById('searchUsers');
+const userList = document.getElementById('userList'); // ユーザーリストの表示
 const searchStatus = document.getElementById('searchStatus');
 
 let localStream;
@@ -79,7 +78,7 @@ function setupPeerConnection() {
     });
 
     // ビデオ通話リクエストの受信
-    socket.on('startVideoCall', async (callerId) => {
+    socket.on('videoCallRequest', async (callerId) => {
         if (confirm('Incoming video call request. Accept?')) {
             otherUserId = callerId;
             socket.emit('acceptVideoCall', otherUserId);
@@ -94,10 +93,29 @@ function setupPeerConnection() {
     });
 
     // チャットメッセージの受信
-    socket.on('chatMessage', (message) => {
+    socket.on('chatMessage', ({ message, from }) => {
         const messageElement = document.createElement('div');
-        messageElement.textContent = message;
+        messageElement.textContent = `User ${from}: ${message}`;
         chatBox.appendChild(messageElement);
+    });
+
+    // 通話の開始
+    socket.on('callStarted', (targetId) => {
+        otherUserId = targetId;
+        setupPeerConnection();
+    });
+
+    // ユーザーリストの更新
+    socket.on('updateUserList', (users) => {
+        userList.innerHTML = '';
+        users.forEach(userId => {
+            const userElement = document.createElement('div');
+            userElement.textContent = `User ID: ${userId}`;
+            userElement.addEventListener('click', () => {
+                socket.emit('startVideoCall', userId);
+            });
+            userList.appendChild(userElement);
+        });
     });
 }
 
@@ -123,7 +141,7 @@ toggleCameraButton.addEventListener('click', () => {
 sendMessageButton.addEventListener('click', () => {
     const message = messageInput.value;
     if (message && chatRoom) {
-        socket.emit('chatMessage', message);
+        socket.emit('chatMessage', { message, to: chatRoom });
         const messageElement = document.createElement('div');
         messageElement.textContent = `You: ${message}`;
         chatBox.appendChild(messageElement);
@@ -131,41 +149,11 @@ sendMessageButton.addEventListener('click', () => {
     }
 });
 
-// ユーザー検索
-searchUsersButton.addEventListener('click', () => {
-    const keyword = keywordInput.value;
-    if (keyword) {
-        searchStatus.textContent = 'Searching...';
-        socket.emit('searchUsers', keyword);
-    }
-});
-
-// 検索結果の表示
-socket.on('searchResult', (users) => {
-    searchStatus.textContent = '';
-    if (users.length > 0) {
-        searchStatus.textContent = `Found ${users.length} user(s)`;
-        users.forEach(userId => {
-            const userElement = document.createElement('div');
-            userElement.textContent = `User ID: ${userId}`;
-            userElement.addEventListener('click', () => {
-                socket.emit('startVideoCall', keywordInput.value);
-            });
-            searchStatus.appendChild(userElement);
-        });
-    } else {
-        searchStatus.textContent = 'No users found';
-    }
-});
-
-// ユーザーがページを読み込むときにキーワードを設定する
-window.addEventListener('load', () => {
-    const keyword = prompt('Enter your keyword for matching:', '');
-    if (keyword) {
-        socket.emit('setKeyword', keyword);
-    }
-});
+// ユーザーリストの取得
+function updateUserList() {
+    socket.emit('getUserList');
+}
 
 // 初期化
 startMedia();
-
+updateUserList();

@@ -7,36 +7,31 @@
     <style>
         #localVideo, #remoteVideo {
             width: 45%;
-            margin: 1%;
+            margin: 2%;
         }
-        #chatBox {
-            width: 45%;
-            margin: 1%;
-            height: 300px;
-            overflow-y: scroll;
-            border: 1px solid black;
-        }
-        #controls {
-            margin-top: 20px;
+        #userList div {
+            margin: 5px;
+            cursor: pointer;
         }
     </style>
 </head>
 <body>
     <h1>Video Call App</h1>
-    <div id="videos">
-        <video id="localVideo" autoplay muted></video>
-        <video id="remoteVideo" autoplay></video>
-    </div>
+    <video id="localVideo" autoplay muted></video>
+    <video id="remoteVideo" autoplay></video>
+
     <div id="controls">
         <button id="toggleMic">マイクオフ</button>
-        <button id="toggleCamera">内向きカメラ</button>
-        <input id="keywordInput" type="text" placeholder="Enter keyword">
-        <button id="searchUsers">検索</button>
-        <div id="searchStatus"></div>
+        <button id="toggleCamera">外向きカメラ</button>
     </div>
-    <div id="chatBox"></div>
-    <input id="messageInput" type="text" placeholder="Type a message">
-    <button id="sendMessage">Send</button>
+
+    <div id="chat">
+        <div id="chatBox"></div>
+        <input id="messageInput" type="text" placeholder="Type a message...">
+        <button id="sendMessage">Send</button>
+    </div>
+
+    <div id="userList"></div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script src="main.js"></script>
