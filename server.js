@@ -1,20 +1,36 @@
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
+const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
 
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
+
+// ユーザーのキーワードを保存するためのシンプルなストレージ
+const userKeywords = {};
+
+// 接続されたユーザーを管理
+const connectedUsers = {};
 
 io.on('connection', (socket) => {
-    console.log('a user connected');
+    console.log('A user connected');
 
-    socket.on('disconnect', () => {
-        console.log('user disconnected');
+    // ユーザーがキーワードを設定する
+    socket.on('setKeywords', (keywords) => {
+        userKeywords[socket.id] = keywords;
+        connectedUsers[socket.id] = socket;
+        console.log(`User ${socket.id} set keywords: ${keywords}`);
     });
 
+    // メッセージのブロードキャスト
+    socket.on('chatMessage', (message) => {
+        io.emit('chatMessage', message);
+    });
+
+    // ビデオ通話のシグナリングメッセージを中継
     socket.on('offer', (offer) => {
         socket.broadcast.emit('offer', offer);
     });
@@ -26,9 +42,31 @@ io.on('connection', (socket) => {
     socket.on('candidate', (candidate) => {
         socket.broadcast.emit('candidate', candidate);
     });
+
+    // ユーザーのディスコネクト処理
+    socket.on('disconnect', () => {
+        console.log('A user disconnected');
+        delete userKeywords[socket.id];
+        delete connectedUsers[socket.id];
+    });
+
+    // 検索ワードに基づいてビデオ通話を開始するためのリクエスト
+    socket.on('startVideoCall', (keyword) => {
+        const targetUserIds = Object.keys(userKeywords).filter(id => userKeywords[id] === keyword);
+        targetUserIds.forEach(id => {
+            if (connectedUsers[id]) {
+                connectedUsers[id].emit('startVideoCall', socket.id);
+            }
+        });
+    });
+
+    socket.on('acceptVideoCall', (callerId) => {
+        if (connectedUsers[callerId]) {
+            connectedUsers[callerId].emit('callAccepted', socket.id);
+        }
+    });
 });
 
-const port = 3000;
-server.listen(port, () => {
-    console.log(`Server is running on http://localhost:${port}`);
+server.listen(3000, () => {
+    console.log('Server is running on http://localhost:3000');
 });

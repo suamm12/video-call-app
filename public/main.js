@@ -3,28 +3,36 @@ const localVideo = document.getElementById('localVideo');
 const remoteVideo = document.getElementById('remoteVideo');
 const toggleMicButton = document.getElementById('toggleMic');
 const toggleCameraButton = document.getElementById('toggleCamera');
+const messageInput = document.getElementById('messageInput');
+const sendMessageButton = document.getElementById('sendMessage');
+const chatBox = document.getElementById('chatBox');
+const keywordInput = document.getElementById('keywordInput');
+const searchUsersButton = document.getElementById('searchUsers');
 
 let localStream;
 let peerConnection;
-let micEnabled = false;
+let micEnabled = true;
 let cameraEnabled = true;
+let otherUserId = null;
 
 // WebRTCの設定
 const config = {
     iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' }
+        { urls: 'stun:stun.l.google.com:19302' } // STUNサーバーの設定
     ]
 };
 
-// 初期設定で外向きカメラ、マイクをオフにしてセットアップ
-navigator.mediaDevices.getUserMedia({ audio: true, video: { facingMode: "environment" } })
-    .then(stream => {
-        localStream = stream;
+// 初期設定で外向きカメラ、マイクをオンにしてセットアップ
+async function startMedia() {
+    try {
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: { facingMode: "environment" } });
         localVideo.srcObject = localStream;
         localVideo.play();
         setupPeerConnection();
-    })
-    .catch(error => console.error('Error accessing media devices.', error));
+    } catch (error) {
+        console.error('Error accessing media devices.', error);
+    }
+}
 
 // PeerConnectionのセットアップ
 function setupPeerConnection() {
@@ -60,6 +68,26 @@ function setupPeerConnection() {
     socket.on('candidate', candidate => {
         peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
     });
+
+    // ビデオ通話のリクエストを受信
+    socket.on('startVideoCall', (callerId) => {
+        if (confirm('Incoming video call request. Accept?')) {
+            otherUserId = callerId;
+            socket.emit('acceptVideoCall', callerId);
+        }
+    });
+
+    socket.on('callAccepted', (calleeId) => {
+        otherUserId = calleeId;
+        makeCall();
+    });
+}
+
+// ビデオ通話を開始するための関数
+async function makeCall() {
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+    socket.emit('offer', offer);
 }
 
 // マイクのオン・オフを切り替える関数
@@ -73,21 +101,52 @@ toggleMicButton.addEventListener('click', () => {
 toggleCameraButton.addEventListener('click', async () => {
     cameraEnabled = !cameraEnabled;
     const videoConstraints = cameraEnabled ? { facingMode: "environment" } : { facingMode: "user" };
-    
+
     // 現在のビデオストリームを停止
     localStream.getVideoTracks().forEach(track => track.stop());
-    
+
     // 新しいビデオストリームを取得
-    const newStream = await navigator.mediaDevices.getUserMedia({ audio: micEnabled, video: videoConstraints });
-    localStream = newStream;
-    localVideo.srcObject = localStream;
-    
-    // PeerConnectionに新しいストリームを追加
-    peerConnection.getSenders().forEach(sender => {
-        if (sender.track.kind === 'video') {
-            peerConnection.removeTrack(sender);
-            peerConnection.addTrack(newStream.getVideoTracks()[0], localStream);
-        }
-    });
-    localVideo.play();
+    try {
+        const newStream = await navigator.mediaDevices.getUserMedia({ audio: micEnabled, video: videoConstraints });
+        localStream = newStream;
+        localVideo.srcObject = localStream;
+
+        // PeerConnectionに新しいストリームを追加
+        peerConnection.getSenders().forEach(sender => {
+            if (sender.track.kind === 'video') {
+                peerConnection.removeTrack(sender);
+                peerConnection.addTrack(newStream.getVideoTracks()[0], localStream);
+            }
+        });
+
+        localVideo.srcObject = localStream;
+        localVideo.play();
+    } catch (error) {
+        console.error('Error accessing media devices.', error);
+    }
+});
+
+// チャット機能
+sendMessageButton.addEventListener('click', () => {
+    const message = messageInput.value;
+    if (message) {
+        socket.emit('chatMessage', message);
+        messageInput.value = '';
+    }
+});
+
+// チャットメッセージの受信
+socket.on('chatMessage', (message) => {
+    const messageElement = document.createElement('div');
+    messageElement.textContent = message;
+    chatBox.appendChild(messageElement);
+    chatBox.scrollTop = chatBox.scrollHeight;  // スクロールを最新メッセージに合わせる
+});
+
+// ユーザー検索機能
+searchUsersButton.addEventListener('click', () => {
+    const keyword = keywordInput.value;
+    if (keyword) {
+        socket.emit('startVideoCall', keyword);
+    }
 });
