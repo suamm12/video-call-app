@@ -158,5 +158,14 @@ socket.on('searchResult', (users) => {
     }
 });
 
+// ユーザーがページを読み込むときにキーワードを設定する
+window.addEventListener('load', () => {
+    const keyword = prompt('Enter your keyword for matching:', '');
+    if (keyword) {
+        socket.emit('setKeyword', keyword);
+    }
+});
+
 // 初期化
 startMedia();
+
