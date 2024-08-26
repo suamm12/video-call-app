@@ -1,0 +1,39 @@
+# Node.js dependencies
+/node_modules/
+
+# Environment variables
+.env
+
+# Build output
+/dist
+/build
+
+# Logs
+*.log
+
+# OS specific files
+.DS_Store  # macOS
+Thumbs.db  # Windows
+
+# npm package lock file
+package-lock.json
+
+# IDE/editor specific files
+.vscode/
+.idea/
+
+# Debug files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Coverage directory used by tools like istanbul
+/coverage
+
+# Temporary files
+*.tmp
+*.temp
+
+# Optional: Lock files (depends on your workflow)
+yarn.lock
+pnpm-lock.yaml
