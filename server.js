@@ -1,87 +1,81 @@
 // server.js
-const express = require('express');
-const http = require('http');
-const socketIo = require('socket.io');
-const path = require('path');
+const io = require('socket.io')(3000);
 
-const app = express();
-const server = http.createServer(app);
-const io = socketIo(server);
+// 仮のユーザー情報管理（ここではメモリ内のオブジェクトを使用）
+const users = {};
+const userKeywords = {}; // ユーザーIDとキーワードのマッピング
 
-app.use(express.static(path.join(__dirname, 'public')));
+io.on('connection', socket => {
+    console.log('A user connected:', socket.id);
 
-let userKeywords = {};
-let connectedUsers = {};
+    // ユーザーの情報を登録
+    users[socket.id] = { id: socket.id, keyword: '' };
+    userKeywords[socket.id] = ''; // 初期キーワード
 
-// クライアントが接続したとき
-io.on('connection', (socket) => {
-    console.log('A user connected');
-
-    // ユーザーがキーワードを設定する
-    socket.on('setKeywords', (keywords) => {
-        userKeywords[socket.id] = keywords;
-        connectedUsers[socket.id] = socket;
-        console.log(`User ${socket.id} set keywords: ${keywords}`);
+    // ユーザーがキーワードを設定
+    socket.on('setKeyword', keyword => {
+        userKeywords[socket.id] = keyword;
+        console.log(`User ${socket.id} set keyword to "${keyword}"`);
     });
 
-    // 検索ワードに基づいてビデオ通話を開始するためのリクエスト
-    socket.on('startVideoCall', (keyword) => {
-        const targetUserIds = Object.keys(userKeywords).filter(id => userKeywords[id] === keyword);
-        if (targetUserIds.length > 0) {
-            socket.emit('searchResult', targetUserIds);
-        } else {
-            socket.emit('searchResult', []);
-        }
+    // 検索リクエストの処理
+    socket.on('searchUsers', keyword => {
+        console.log('Search keyword:', keyword);
+        const matchingUsers = Object.keys(userKeywords)
+            .filter(userId => userKeywords[userId] === keyword && userId !== socket.id);
+        socket.emit('searchResult', matchingUsers);
     });
 
-    // チャットメッセージを受信し、他のクライアントに送信
+    // ビデオ通話オファーの処理
+    socket.on('offer', (offer) => {
+        const { to } = offer;
+        io.to(to).emit('offer', { offer: offer.offer, from: socket.id });
+    });
+
+    // ビデオ通話アンサーの処理
+    socket.on('answer', (answer) => {
+        const { to } = answer;
+        io.to(to).emit('answer', { answer: answer.answer, from: socket.id });
+    });
+
+    // ICE候補の処理
+    socket.on('candidate', (candidate) => {
+        const { to } = candidate;
+        io.to(to).emit('candidate', { candidate: candidate.candidate, from: socket.id });
+    });
+
+    // チャットメッセージの送信
     socket.on('chatMessage', (message) => {
         if (socket.chatRoom) {
             io.to(socket.chatRoom).emit('chatMessage', message);
         }
     });
 
-    // ビデオ通話のオファーを送信
-    socket.on('offer', (offer) => {
-        if (socket.chatRoom) {
-            socket.to(socket.chatRoom).emit('offer', offer);
+    // ビデオ通話のリクエストを送信
+    socket.on('startVideoCall', (keyword) => {
+        const matchingUsers = Object.keys(userKeywords)
+            .find(userId => userKeywords[userId] === keyword && userId !== socket.id);
+
+        if (matchingUsers) {
+            socket.emit('searchResult', [matchingUsers]);
+            io.to(matchingUsers).emit('startVideoCall', socket.id);
+        } else {
+            socket.emit('searchResult', []);
         }
     });
 
-    // ビデオ通話のアンサーを送信
-    socket.on('answer', (answer) => {
-        if (socket.chatRoom) {
-            socket.to(socket.chatRoom).emit('answer', answer);
-        }
-    });
-
-    // ICE候補を送信
-    socket.on('candidate', (candidate) => {
-        if (socket.chatRoom) {
-            socket.to(socket.chatRoom).emit('candidate', candidate);
-        }
-    });
-
-    // ビデオ通話リクエストの受け入れ
+    // ビデオ通話の応答
     socket.on('acceptVideoCall', (callerId) => {
-        const callerSocket = connectedUsers[callerId];
-        if (callerSocket) {
-            callerSocket.emit('callAccepted', socket.id);
-            socket.chatRoom = `${socket.id}-${callerId}`;
-            callerSocket.chatRoom = `${socket.id}-${callerId}`;
-            socket.join(socket.chatRoom);
-            callerSocket.join(socket.chatRoom);
-        }
+        socket.chatRoom = `${socket.id}-${callerId}`;
+        io.to(callerId).emit('callAccepted', socket.id);
     });
 
-    // ユーザーが切断したとき
+    // 接続終了時の処理
     socket.on('disconnect', () => {
-        console.log('A user disconnected');
+        console.log('User disconnected:', socket.id);
+        delete users[socket.id];
         delete userKeywords[socket.id];
-        delete connectedUsers[socket.id];
     });
 });
 
-server.listen(3000, () => {
-    console.log('Server is running on http://localhost:3000');
-});
+console.log('Server listening on port 3000');
