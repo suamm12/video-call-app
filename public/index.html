@@ -3,37 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Call App</title>
-    <style>
-        #localVideo, #remoteVideo {
-            width: 45%;
-            margin: 2%;
-        }
-        #userList div {
-            margin: 5px;
-            cursor: pointer;
-        }
-    </style>
+    <title>Video Call</title>
 </head>
 <body>
-    <h1>Video Call App</h1>
     <video id="localVideo" autoplay muted></video>
-    <video id="remoteVideo" autoplay></video>
-
-    <div id="controls">
-        <button id="toggleMic">マイクオフ</button>
-        <button id="toggleCamera">外向きカメラ</button>
-    </div>
-
-    <div id="chat">
-        <div id="chatBox"></div>
-        <input id="messageInput" type="text" placeholder="Type a message...">
-        <button id="sendMessage">Send</button>
-    </div>
-
-    <div id="userList"></div>
-
-    <script src="/socket.io/socket.io.js"></script>
+    <button id="toggleMic">マイクオン</button>
+    <button id="toggleCamera">カメラ切り替え</button>
     <script src="main.js"></script>
 </body>
 </html>
