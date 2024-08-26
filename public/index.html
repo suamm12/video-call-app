@@ -3,41 +3,40 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Call with Chat</title>
+    <title>Video Call App</title>
     <style>
         #localVideo, #remoteVideo {
             width: 45%;
-            margin: 2%;
-        }
-        #controls, #chatBox {
-            margin-top: 10px;
+            margin: 5px;
         }
         #chatBox {
-            border: 1px solid #ccc;
-            padding: 10px;
             height: 200px;
             overflow-y: scroll;
+            border: 1px solid #ccc;
+            padding: 10px;
         }
     </style>
 </head>
 <body>
-    <video id="localVideo" autoplay muted></video>
-    <video id="remoteVideo" autoplay></video>
-
-    <div id="controls">
+    <h1>Video Call App</h1>
+    <div>
+        <video id="localVideo" autoplay muted></video>
+        <video id="remoteVideo" autoplay></video>
+    </div>
+    <div>
         <button id="toggleMic">マイクオン</button>
         <button id="toggleCamera">カメラ切り替え</button>
     </div>
-
-    <div id="chatBox"></div>
-    <input id="messageInput" type="text" placeholder="メッセージを入力..." />
-    <button id="sendMessage">送信</button>
-
-    <div id="searchBox">
-        <input id="keywordInput" type="text" placeholder="検索ワードを入力..." />
-        <button id="searchUsers">検索</button>
+    <div>
+        <input id="keywordInput" type="text" placeholder="Search keyword">
+        <button id="searchUsers">Search Users</button>
+        <p id="searchStatus"></p>
     </div>
-
+    <div>
+        <div id="chatBox"></div>
+        <input id="messageInput" type="text" placeholder="Enter message">
+        <button id="sendMessage">Send</button>
+    </div>
     <script src="/socket.io/socket.io.js"></script>
     <script src="main.js"></script>
 </body>

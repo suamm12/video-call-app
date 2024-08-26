@@ -1,3 +1,4 @@
+// server.js
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
@@ -9,12 +10,10 @@ const io = socketIo(server);
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ユーザーのキーワードを保存するためのシンプルなストレージ
-const userKeywords = {};
+let userKeywords = {};
+let connectedUsers = {};
 
-// 接続されたユーザーを管理
-const connectedUsers = {};
-
+// クライアントが接続したとき
 io.on('connection', (socket) => {
     console.log('A user connected');
 
@@ -23,33 +22,6 @@ io.on('connection', (socket) => {
         userKeywords[socket.id] = keywords;
         connectedUsers[socket.id] = socket;
         console.log(`User ${socket.id} set keywords: ${keywords}`);
-    });
-
-    // メッセージのブロードキャスト
-    socket.on('chatMessage', (message) => {
-        if (connectedUsers[socket.id]) {
-            io.to(connectedUsers[socket.id].room).emit('chatMessage', message);
-        }
-    });
-
-    // ビデオ通話のシグナリングメッセージを中継
-    socket.on('offer', (offer) => {
-        socket.broadcast.emit('offer', offer);
-    });
-
-    socket.on('answer', (answer) => {
-        socket.broadcast.emit('answer', answer);
-    });
-
-    socket.on('candidate', (candidate) => {
-        socket.broadcast.emit('candidate', candidate);
-    });
-
-    // ユーザーのディスコネクト処理
-    socket.on('disconnect', () => {
-        console.log('A user disconnected');
-        delete userKeywords[socket.id];
-        delete connectedUsers[socket.id];
     });
 
     // 検索ワードに基づいてビデオ通話を開始するためのリクエスト
@@ -62,22 +34,51 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ユーザーのチャットルーム設定
-    socket.on('joinRoom', (room) => {
-        socket.join(room);
-        console.log(`User ${socket.id} joined room ${room}`);
-    });
-
-    socket.on('leaveRoom', (room) => {
-        socket.leave(room);
-        console.log(`User ${socket.id} left room ${room}`);
-    });
-
-    socket.on('acceptVideoCall', (callerId) => {
-        if (connectedUsers[callerId]) {
-            connectedUsers[callerId].emit('callAccepted', socket.id);
-            socket.emit('callAccepted', callerId);
+    // チャットメッセージを受信し、他のクライアントに送信
+    socket.on('chatMessage', (message) => {
+        if (socket.chatRoom) {
+            io.to(socket.chatRoom).emit('chatMessage', message);
         }
+    });
+
+    // ビデオ通話のオファーを送信
+    socket.on('offer', (offer) => {
+        if (socket.chatRoom) {
+            socket.to(socket.chatRoom).emit('offer', offer);
+        }
+    });
+
+    // ビデオ通話のアンサーを送信
+    socket.on('answer', (answer) => {
+        if (socket.chatRoom) {
+            socket.to(socket.chatRoom).emit('answer', answer);
+        }
+    });
+
+    // ICE候補を送信
+    socket.on('candidate', (candidate) => {
+        if (socket.chatRoom) {
+            socket.to(socket.chatRoom).emit('candidate', candidate);
+        }
+    });
+
+    // ビデオ通話リクエストの受け入れ
+    socket.on('acceptVideoCall', (callerId) => {
+        const callerSocket = connectedUsers[callerId];
+        if (callerSocket) {
+            callerSocket.emit('callAccepted', socket.id);
+            socket.chatRoom = `${socket.id}-${callerId}`;
+            callerSocket.chatRoom = `${socket.id}-${callerId}`;
+            socket.join(socket.chatRoom);
+            callerSocket.join(socket.chatRoom);
+        }
+    });
+
+    // ユーザーが切断したとき
+    socket.on('disconnect', () => {
+        console.log('A user disconnected');
+        delete userKeywords[socket.id];
+        delete connectedUsers[socket.id];
     });
 });
 

@@ -1,3 +1,4 @@
+// public/main.js
 const socket = io();
 const localVideo = document.getElementById('localVideo');
 const remoteVideo = document.getElementById('remoteVideo');
@@ -8,7 +9,7 @@ const sendMessageButton = document.getElementById('sendMessage');
 const chatBox = document.getElementById('chatBox');
 const keywordInput = document.getElementById('keywordInput');
 const searchUsersButton = document.getElementById('searchUsers');
-const searchStatus = document.getElementById('searchStatus'); // ローディング表示用
+const searchStatus = document.getElementById('searchStatus');
 
 let localStream;
 let peerConnection;
@@ -20,14 +21,17 @@ let chatRoom = null;
 // WebRTCの設定
 const config = {
     iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' } // STUNサーバーの設定
+        { urls: 'stun:stun.l.google.com:19302' } // STUNサーバー
     ]
 };
 
-// 初期設定で外向きカメラ、マイクをオンにしてセットアップ
+// メディアストリームの取得と設定
 async function startMedia() {
     try {
-        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: { facingMode: "environment" } });
+        localStream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: { facingMode: "environment" } // デフォルトで外向きカメラ
+        });
         localVideo.srcObject = localStream;
         localVideo.play();
         setupPeerConnection();
@@ -36,11 +40,11 @@ async function startMedia() {
     }
 }
 
-// PeerConnectionのセットアップ
+// PeerConnectionの設定
 function setupPeerConnection() {
     peerConnection = new RTCPeerConnection(config);
 
-    // ローカルストリームをPeerConnectionに追加
+    // ローカルストリームのトラックをPeerConnectionに追加
     localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
     // ICE候補を送信
@@ -50,12 +54,12 @@ function setupPeerConnection() {
         }
     };
 
-    // リモートストリームを受信
+    // リモートストリームの受信
     peerConnection.ontrack = event => {
         remoteVideo.srcObject = event.streams[0];
     };
 
-    // Offerの受信とAnswerの処理
+    // サーバーからのオファーの処理
     socket.on('offer', async offer => {
         await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
         const answer = await peerConnection.createAnswer();
@@ -63,23 +67,26 @@ function setupPeerConnection() {
         socket.emit('answer', answer);
     });
 
+    // サーバーからのアンサーの処理
     socket.on('answer', async answer => {
         await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
     });
 
+    // サーバーからのICE候補の処理
     socket.on('candidate', candidate => {
         peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
     });
 
-    // ビデオ通話のリクエストを受信
-    socket.on('startVideoCall', (callerId) => {
+    // ビデオ通話リクエストの受信
+    socket.on('startVideoCall', callerId => {
         if (confirm('Incoming video call request. Accept?')) {
             otherUserId = callerId;
             socket.emit('acceptVideoCall', callerId);
         }
     });
 
-    socket.on('callAccepted', (calleeId) => {
+    // 通話が受け入れられたときの処理
+    socket.on('callAccepted', calleeId => {
         otherUserId = calleeId;
         chatRoom = `${socket.id}-${otherUserId}`;
         socket.emit('joinRoom', chatRoom);
@@ -87,15 +94,15 @@ function setupPeerConnection() {
     });
 
     // チャットメッセージの受信
-    socket.on('chatMessage', (message) => {
+    socket.on('chatMessage', message => {
         const messageElement = document.createElement('div');
         messageElement.textContent = message;
         chatBox.appendChild(messageElement);
-        chatBox.scrollTop = chatBox.scrollHeight;  // スクロールを最新メッセージに合わせる
+        chatBox.scrollTop = chatBox.scrollHeight; // 最新メッセージにスクロール
     });
 
-    // 検索結果を受信
-    socket.on('searchResult', (userIds) => {
+    // 検索結果の受信
+    socket.on('searchResult', userIds => {
         searchStatus.textContent = '';
         if (userIds.length > 0) {
             alert(`Users found: ${userIds.join(', ')}`);
@@ -114,53 +121,35 @@ async function makeCall() {
     socket.emit('offer', offer);
 }
 
-// マイクのオン・オフを切り替える関数
+// マイクのオン・オフを切り替える
 toggleMicButton.addEventListener('click', () => {
     micEnabled = !micEnabled;
     localStream.getAudioTracks().forEach(track => track.enabled = micEnabled);
     toggleMicButton.textContent = micEnabled ? 'マイクオフ' : 'マイクオン';
 });
 
-// カメラの切り替え（外向き・内向き）を切り替える関数
+// カメラの切り替え
 toggleCameraButton.addEventListener('click', async () => {
     cameraEnabled = !cameraEnabled;
     const videoConstraints = cameraEnabled ? { facingMode: "environment" } : { facingMode: "user" };
-
-    // 現在のビデオストリームを停止
+    const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
     localStream.getVideoTracks().forEach(track => track.stop());
-
-    // 新しいビデオストリームを取得
-    try {
-        const newStream = await navigator.mediaDevices.getUserMedia({ audio: micEnabled, video: videoConstraints });
-        localStream = newStream;
-        localVideo.srcObject = localStream;
-
-        // PeerConnectionに新しいストリームを追加
-        peerConnection.getSenders().forEach(sender => {
-            if (sender.track.kind === 'video') {
-                peerConnection.removeTrack(sender);
-                peerConnection.addTrack(newStream.getVideoTracks()[0], localStream);
-            }
-        });
-
-        localVideo.play();
-    } catch (error) {
-        console.error('Error accessing media devices.', error);
-    }
+    localStream.addTrack(stream.getVideoTracks()[0]);
+    localVideo.srcObject = localStream;
+    localVideo.play();
+    toggleCameraButton.textContent = cameraEnabled ? '内向きカメラ' : '外向きカメラ';
 });
 
-// チャット機能
+// メッセージ送信
 sendMessageButton.addEventListener('click', () => {
     const message = messageInput.value;
     if (message && chatRoom) {
         socket.emit('chatMessage', message);
         messageInput.value = '';
-    } else {
-        alert('You need to be in a chat room to send messages.');
     }
 });
 
-// ユーザー検索機能
+// ユーザー検索
 searchUsersButton.addEventListener('click', () => {
     const keyword = keywordInput.value;
     if (keyword) {
@@ -169,5 +158,5 @@ searchUsersButton.addEventListener('click', () => {
     }
 });
 
-// ページのロード時にメディアを開始
-window.onload = startMedia;
+// 初期化
+startMedia();
