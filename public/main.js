@@ -153,7 +153,7 @@ sendMessageButton.addEventListener('click', () => {
 searchUsersButton.addEventListener('click', () => {
     const keyword = keywordInput.value;
     if (keyword) {
-        searchStatus.textContent = 'Searching...'; // ローディング表示
+        searchStatus.textContent = '検索中...'; // ローディング表示
         socket.emit('startVideoCall', keyword);
     }
 });
