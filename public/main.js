@@ -10,6 +10,8 @@ const config = {
 const localVideo = document.getElementById('localVideo');
 const remoteVideo = document.getElementById('remoteVideo');
 const micToggleButton = document.getElementById('micToggle');
+const chatInput = document.getElementById('chatInput');
+const chatMessages = document.getElementById('chatMessages');
 
 async function getDevices() {
     const devices = await navigator.mediaDevices.enumerateDevices();
@@ -82,7 +84,31 @@ function toggleMic() {
 
 micToggleButton.addEventListener('click', toggleMic);
 
-// Automatically start the call when the page loads
+chatInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+        const message = chatInput.value;
+        if (message) {
+            socket.emit('chatMessage', {
+                text: message,
+                recipientId: getCurrentCallPartnerId()
+            });
+            chatInput.value = '';
+        }
+    }
+});
+
+socket.on('chatMessage', (message) => {
+    const newMessage = document.createElement('div');
+    newMessage.textContent = message.text;
+    chatMessages.appendChild(newMessage);
+});
+
+function getCurrentCallPartnerId() {
+    // Assuming there's a way to determine the ID of the current call partner
+    // This function should return the ID of the current call partner
+    return null; // Placeholder, implement as needed
+}
+
 window.onload = async () => {
     await startStream();
     startCall();

@@ -9,11 +9,9 @@ const io = socketIo(server);
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ユーザーのキーワードを保存するためのシンプルなストレージ
 const userKeywords = {};
-
-// 接続されたユーザーを管理
 const connectedUsers = {};
+const userCalls = {};
 
 io.on('connection', (socket) => {
     console.log('A user connected');
@@ -27,30 +25,32 @@ io.on('connection', (socket) => {
 
     // メッセージのブロードキャスト
     socket.on('chatMessage', (message) => {
-        io.emit('chatMessage', message);
+        const { recipientId } = message;
+        if (userCalls[socket.id] && userCalls[socket.id].includes(recipientId)) {
+            if (connectedUsers[recipientId]) {
+                connectedUsers[recipientId].emit('chatMessage', message);
+            }
+        }
     });
 
     // ビデオ通話のシグナリングメッセージを中継
     socket.on('offer', (offer) => {
         socket.broadcast.emit('offer', offer);
+        userCalls[socket.id] = [socket.id]; // Initialize call list for the user
     });
 
     socket.on('answer', (answer) => {
         socket.broadcast.emit('answer', answer);
+        const callerId = Object.keys(userCalls).find(id => userCalls[id].includes(socket.id));
+        if (callerId) {
+            userCalls[callerId].push(socket.id);
+        }
     });
 
     socket.on('candidate', (candidate) => {
         socket.broadcast.emit('candidate', candidate);
     });
 
-    // ユーザーのディスコネクト処理
-    socket.on('disconnect', () => {
-        console.log('A user disconnected');
-        delete userKeywords[socket.id];
-        delete connectedUsers[socket.id];
-    });
-
-    // 検索ワードに基づいてビデオ通話を開始するためのリクエスト
     socket.on('startVideoCall', (keyword) => {
         const targetUserIds = Object.keys(userKeywords).filter(id => userKeywords[id] === keyword);
         targetUserIds.forEach(id => {
@@ -64,6 +64,18 @@ io.on('connection', (socket) => {
         if (connectedUsers[callerId]) {
             connectedUsers[callerId].emit('callAccepted', socket.id);
         }
+    });
+
+    socket.on('disconnect', () => {
+        console.log('A user disconnected');
+        delete userKeywords[socket.id];
+        delete connectedUsers[socket.id];
+        Object.keys(userCalls).forEach(id => {
+            userCalls[id] = userCalls[id].filter(calleeId => calleeId !== socket.id);
+            if (userCalls[id].length === 0) {
+                delete userCalls[id];
+            }
+        });
     });
 });
 
