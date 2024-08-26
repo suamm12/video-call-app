@@ -1,9 +1,20 @@
-let localStream;
-let micEnabled = false;
-let cameraEnabled = false;
+const socket = io();
 const localVideo = document.getElementById('localVideo');
+const remoteVideo = document.getElementById('remoteVideo');
 const toggleMicButton = document.getElementById('toggleMic');
 const toggleCameraButton = document.getElementById('toggleCamera');
+
+let localStream;
+let peerConnection;
+let micEnabled = false;
+let cameraEnabled = true;
+
+// WebRTCの設定
+const config = {
+    iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' }
+    ]
+};
 
 // 初期設定で外向きカメラ、マイクをオフにしてセットアップ
 navigator.mediaDevices.getUserMedia({ audio: true, video: { facingMode: "environment" } })
@@ -11,11 +22,45 @@ navigator.mediaDevices.getUserMedia({ audio: true, video: { facingMode: "environ
         localStream = stream;
         localVideo.srcObject = localStream;
         localVideo.play();
-        micEnabled = false; // 初期状態でマイクをオフ
-        cameraEnabled = true; // 外向きカメラがデフォルト
-        toggleMicButton.textContent = 'マイクオン'; // ボタンのテキストを設定
+        setupPeerConnection();
     })
     .catch(error => console.error('Error accessing media devices.', error));
+
+// PeerConnectionのセットアップ
+function setupPeerConnection() {
+    peerConnection = new RTCPeerConnection(config);
+
+    // ローカルストリームをPeerConnectionに追加
+    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+    // ICE候補を送信
+    peerConnection.onicecandidate = event => {
+        if (event.candidate) {
+            socket.emit('candidate', event.candidate);
+        }
+    };
+
+    // リモートストリームを受信
+    peerConnection.ontrack = event => {
+        remoteVideo.srcObject = event.streams[0];
+    };
+
+    // Offerの受信とAnswerの処理
+    socket.on('offer', async offer => {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        socket.emit('answer', answer);
+    });
+
+    socket.on('answer', async answer => {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+    });
+
+    socket.on('candidate', candidate => {
+        peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    });
+}
 
 // マイクのオン・オフを切り替える関数
 toggleMicButton.addEventListener('click', () => {
@@ -25,28 +70,24 @@ toggleMicButton.addEventListener('click', () => {
 });
 
 // カメラの切り替え（外向き・内向き）を切り替える関数
-toggleCameraButton.addEventListener('click', () => {
-    if (cameraEnabled) {
-        // 外向きカメラから内向きカメラに切り替え
-        localStream.getVideoTracks().forEach(track => track.stop());
-        navigator.mediaDevices.getUserMedia({ audio: micEnabled, video: { facingMode: "user" } })
-            .then(stream => {
-                localStream = stream;
-                localVideo.srcObject = localStream;
-                localVideo.play();
-                cameraEnabled = false;
-            })
-            .catch(error => console.error('Error accessing media devices.', error));
-    } else {
-        // 内向きカメラから外向きカメラに切り替え
-        localStream.getVideoTracks().forEach(track => track.stop());
-        navigator.mediaDevices.getUserMedia({ audio: micEnabled, video: { facingMode: "environment" } })
-            .then(stream => {
-                localStream = stream;
-                localVideo.srcObject = localStream;
-                localVideo.play();
-                cameraEnabled = true;
-            })
-            .catch(error => console.error('Error accessing media devices.', error));
-    }
+toggleCameraButton.addEventListener('click', async () => {
+    cameraEnabled = !cameraEnabled;
+    const videoConstraints = cameraEnabled ? { facingMode: "environment" } : { facingMode: "user" };
+    
+    // 現在のビデオストリームを停止
+    localStream.getVideoTracks().forEach(track => track.stop());
+    
+    // 新しいビデオストリームを取得
+    const newStream = await navigator.mediaDevices.getUserMedia({ audio: micEnabled, video: videoConstraints });
+    localStream = newStream;
+    localVideo.srcObject = localStream;
+    
+    // PeerConnectionに新しいストリームを追加
+    peerConnection.getSenders().forEach(sender => {
+        if (sender.track.kind === 'video') {
+            peerConnection.removeTrack(sender);
+            peerConnection.addTrack(newStream.getVideoTracks()[0], localStream);
+        }
+    });
+    localVideo.play();
 });

@@ -4,11 +4,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Video Call</title>
+    <style>
+        #localVideo, #remoteVideo {
+            width: 45%;
+            margin: 2%;
+        }
+        #controls {
+            margin-top: 10px;
+        }
+    </style>
 </head>
 <body>
     <video id="localVideo" autoplay muted></video>
-    <button id="toggleMic">マイクオン</button>
-    <button id="toggleCamera">カメラ切り替え</button>
+    <video id="remoteVideo" autoplay></video>
+    <div id="controls">
+        <button id="toggleMic">マイクオン</button>
+        <button id="toggleCamera">カメラ切り替え</button>
+    </div>
+    <script src="/socket.io/socket.io.js"></script>
     <script src="main.js"></script>
 </body>
 </html>
