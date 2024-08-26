@@ -1,7 +1,6 @@
 const socket = io();
 
 let localStream;
-let remoteStream;
 let peerConnection;
 const config = {
     iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
@@ -9,6 +8,7 @@ const config = {
 
 const localVideo = document.getElementById('localVideo');
 const remoteVideo = document.getElementById('remoteVideo');
+const startCallButton = document.getElementById('startCall');
 
 navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     .then(stream => {
@@ -16,6 +16,8 @@ navigator.mediaDevices.getUserMedia({ video: true, audio: true })
         localVideo.srcObject = localStream;
     })
     .catch(error => console.error('Error accessing media devices.', error));
+
+startCallButton.addEventListener('click', startCall);
 
 socket.on('offer', (offer) => {
     peerConnection = new RTCPeerConnection(config);
