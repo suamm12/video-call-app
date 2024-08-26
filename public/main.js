@@ -50,7 +50,7 @@ function setupPeerConnection() {
     // ICE候補を送信
     peerConnection.onicecandidate = event => {
         if (event.candidate) {
-            socket.emit('candidate', event.candidate);
+            socket.emit('candidate', { candidate: event.candidate, to: otherUserId });
         }
     };
 
@@ -60,83 +60,62 @@ function setupPeerConnection() {
     };
 
     // サーバーからのオファーの処理
-    socket.on('offer', async offer => {
+    socket.on('offer', async ({ offer, from }) => {
+        otherUserId = from;
         await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
-        socket.emit('answer', answer);
+        socket.emit('answer', { answer, to: from });
     });
 
     // サーバーからのアンサーの処理
-    socket.on('answer', async answer => {
+    socket.on('answer', async ({ answer, from }) => {
         await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
     });
 
     // サーバーからのICE候補の処理
-    socket.on('candidate', candidate => {
+    socket.on('candidate', ({ candidate, from }) => {
         peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
     });
 
     // ビデオ通話リクエストの受信
-    socket.on('startVideoCall', callerId => {
+    socket.on('startVideoCall', async (callerId) => {
         if (confirm('Incoming video call request. Accept?')) {
             otherUserId = callerId;
-            socket.emit('acceptVideoCall', callerId);
+            socket.emit('acceptVideoCall', otherUserId);
+            await startMedia();
         }
     });
 
-    // 通話が受け入れられたときの処理
-    socket.on('callAccepted', calleeId => {
+    // ビデオ通話の応答
+    socket.on('callAccepted', async (calleeId) => {
         otherUserId = calleeId;
-        chatRoom = `${socket.id}-${otherUserId}`;
-        socket.emit('joinRoom', chatRoom);
-        makeCall();
+        await startMedia();
     });
 
     // チャットメッセージの受信
-    socket.on('chatMessage', message => {
+    socket.on('chatMessage', (message) => {
         const messageElement = document.createElement('div');
         messageElement.textContent = message;
         chatBox.appendChild(messageElement);
-        chatBox.scrollTop = chatBox.scrollHeight; // 最新メッセージにスクロール
-    });
-
-    // 検索結果の受信
-    socket.on('searchResult', userIds => {
-        searchStatus.textContent = '';
-        if (userIds.length > 0) {
-            alert(`Users found: ${userIds.join(', ')}`);
-            otherUserId = userIds[0];
-            chatRoom = `${socket.id}-${otherUserId}`;
-        } else {
-            alert('No users found');
-        }
     });
 }
 
-// ビデオ通話を開始するための関数
-async function makeCall() {
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
-    socket.emit('offer', offer);
-}
-
-// マイクのオン・オフを切り替える
+// マイクのオン・オフ切り替え
 toggleMicButton.addEventListener('click', () => {
     micEnabled = !micEnabled;
-    localStream.getAudioTracks().forEach(track => track.enabled = micEnabled);
+    localStream.getAudioTracks().forEach(track => {
+        track.enabled = micEnabled;
+    });
     toggleMicButton.textContent = micEnabled ? 'マイクオフ' : 'マイクオン';
 });
 
-// カメラの切り替え
-toggleCameraButton.addEventListener('click', async () => {
+// カメラのオン・オフ切り替え
+toggleCameraButton.addEventListener('click', () => {
     cameraEnabled = !cameraEnabled;
-    const videoConstraints = cameraEnabled ? { facingMode: "environment" } : { facingMode: "user" };
-    const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
-    localStream.getVideoTracks().forEach(track => track.stop());
-    localStream.addTrack(stream.getVideoTracks()[0]);
-    localVideo.srcObject = localStream;
-    localVideo.play();
+    localStream.getVideoTracks().forEach(track => {
+        track.enabled = cameraEnabled;
+    });
     toggleCameraButton.textContent = cameraEnabled ? '内向きカメラ' : '外向きカメラ';
 });
 
@@ -145,6 +124,9 @@ sendMessageButton.addEventListener('click', () => {
     const message = messageInput.value;
     if (message && chatRoom) {
         socket.emit('chatMessage', message);
+        const messageElement = document.createElement('div');
+        messageElement.textContent = `You: ${message}`;
+        chatBox.appendChild(messageElement);
         messageInput.value = '';
     }
 });
@@ -153,8 +135,26 @@ sendMessageButton.addEventListener('click', () => {
 searchUsersButton.addEventListener('click', () => {
     const keyword = keywordInput.value;
     if (keyword) {
-        searchStatus.textContent = '検索中...'; // ローディング表示
-        socket.emit('searchUsers', keyword); // サーバーに検索リクエストを送信
+        searchStatus.textContent = 'Searching...';
+        socket.emit('searchUsers', keyword);
+    }
+});
+
+// 検索結果の表示
+socket.on('searchResult', (users) => {
+    searchStatus.textContent = '';
+    if (users.length > 0) {
+        searchStatus.textContent = `Found ${users.length} user(s)`;
+        users.forEach(userId => {
+            const userElement = document.createElement('div');
+            userElement.textContent = `User ID: ${userId}`;
+            userElement.addEventListener('click', () => {
+                socket.emit('startVideoCall', keywordInput.value);
+            });
+            searchStatus.appendChild(userElement);
+        });
+    } else {
+        searchStatus.textContent = 'No users found';
     }
 });
 

@@ -1,24 +1,29 @@
 // server.js
-const io = require('socket.io')(3000);
+const express = require('express');
+const http = require('http');
+const socketIo = require('socket.io');
+const path = require('path');
 
-// 仮のユーザー情報管理（ここではメモリ内のオブジェクトを使用）
-const users = {};
+const app = express();
+const server = http.createServer(app);
+const io = socketIo(server);
+
+// クライアントサイドの静的ファイルを提供
+app.use(express.static(path.join(__dirname, 'public')));
+
+// 仮のユーザー情報管理
 const userKeywords = {}; // ユーザーIDとキーワードのマッピング
 
 io.on('connection', socket => {
     console.log('A user connected:', socket.id);
 
-    // ユーザーの情報を登録
-    users[socket.id] = { id: socket.id, keyword: '' };
-    userKeywords[socket.id] = ''; // 初期キーワード
-
-    // ユーザーがキーワードを設定
+    // ユーザーのキーワードを設定
     socket.on('setKeyword', keyword => {
         userKeywords[socket.id] = keyword;
         console.log(`User ${socket.id} set keyword to "${keyword}"`);
     });
 
-    // 検索リクエストの処理
+    // ユーザー検索リクエストの処理
     socket.on('searchUsers', keyword => {
         console.log('Search keyword:', keyword);
         const matchingUsers = Object.keys(userKeywords)
@@ -73,9 +78,10 @@ io.on('connection', socket => {
     // 接続終了時の処理
     socket.on('disconnect', () => {
         console.log('User disconnected:', socket.id);
-        delete users[socket.id];
         delete userKeywords[socket.id];
     });
 });
 
-console.log('Server listening on port 3000');
+server.listen(3000, () => {
+    console.log('Server listening on port 3000');
+});
